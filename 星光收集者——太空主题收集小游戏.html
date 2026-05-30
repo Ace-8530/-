@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>✨ 星光收集者 · 完整音效版</title>
+    <style>
+        :root {
+            --bg: #0a0a14;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            cursor: none;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vw;
+            height: 80vh;
+            background: radial-gradient(ellipse at center,
+                    rgba(100, 60, 180, 0.12) 0%,
+                    rgba(40, 20, 100, 0.06) 30%,
+                    rgba(10, 5, 30, 0.03) 55%,
+                    transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+            animation: nebulaPulse 8s ease-in-out infinite;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            top: 30%;
+            left: 60%;
+            transform: translate(-50%, -50%);
+            width: 50vw;
+            height: 50vh;
+            background: radial-gradient(ellipse at center,
+                    rgba(180, 100, 220, 0.08) 0%,
+                    rgba(60, 30, 120, 0.04) 35%,
+                    transparent 65%);
+            pointer-events: none;
+            z-index: 0;
+            animation: nebulaPulse2 10s ease-in-out infinite;
+        }
+
+        @keyframes nebulaPulse {
+            0%,
+            100% {
+                opacity: 0.7;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            50% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.15);
+            }
+        }
+        @keyframes nebulaPulse2 {
+            0%,
+            100% {
+                opacity: 0.5;
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+            50% {
+                opacity: 0.9;
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+        }
+
+        .game-wrapper {
+            position: relative;
+            z-index: 1;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow:
+                0 0 60px rgba(120, 80, 200, 0.25),
+                0 0 120px rgba(80, 40, 160, 0.15),
+                0 20px 60px rgba(0, 0, 0, 0.5),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+            transition: box-shadow 0.5s ease;
+        }
+        .game-wrapper.danger {
+            box-shadow:
+                0 0 80px rgba(255, 60, 60, 0.4),
+                0 0 150px rgba(200, 30, 30, 0.25),
+                0 20px 60px rgba(0, 0, 0, 0.5),
+                inset 0 0 0 1px rgba(255, 100, 100, 0.2);
+            animation: dangerGlow 0.3s ease-out;
+        }
+        @keyframes dangerGlow {
+            0% {
+                box-shadow: 0 0 120px rgba(255, 30, 30, 0.7), 0 0 200px rgba(255, 0, 0, 0.4), 0 20px 60px rgba(0, 0, 0, 0.5);
+            }
+            100% {
+                box-shadow: 0 0 80px rgba(255, 60, 60, 0.4), 0 0 150px rgba(200, 30, 30, 0.25), 0 20px 60px rgba(0, 0, 0, 0.5);
+            }
+        }
+
+        canvas {
+            display: block;
+            border-radius: 22px;
+        }
+
+        .sound-toggle {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            z-index: 10;
+            background: rgba(20, 10, 40, 0.55);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 20px;
+            color: white;
+            transition: all 0.2s;
+            pointer-events: auto;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .sound-toggle:hover {
+            background: rgba(60, 30, 100, 0.7);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.08);
+        }
+        .sound-toggle.muted {
+            opacity: 0.7;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+<div class="game-wrapper" id="gameWrapper">
+    <canvas id="gameCanvas"></canvas>
+    <div class="sound-toggle" id="soundToggle" title="音效/音乐开关">🔊</div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('gameWrapper');
+        const soundToggle = document.getElementById('soundToggle');
+
+        // ---------- 音频引擎 ----------
+        let audioCtx = null;
+        let bgmGain = null;
+        let sfxGain = null;
+        let bgmInterval = null;
+        let bgmActive = false;
+        let soundEnabled = true; // 默认开启
+        let bgmNoteIndex = 0;
+        // 背景音乐音符序列（低音漫步）
+        const bgmNotes = [
+            130.81, 146.83, 164.81, 174.61, 196.00, 174.61, 164.81, 146.83,
+            130.81, 146.83, 164.81, 196.00, 220.00, 196.00, 174.61, 164.81,
+            146.83, 164.81, 174.61, 196.00, 220.00, 261.63, 246.94, 220.00,
+            196.00, 174.61, 164.81, 146.83, 130.81, 146.83, 164.81, 174.61
+        ];
+
+        function initAudioContext() {
+            if (audioCtx) return;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                // 主音量节点
+                bgmGain = audioCtx.createGain();
+                bgmGain.gain.value = 0.25;
+                bgmGain.connect(audioCtx.destination);
+                sfxGain = audioCtx.createGain();
+                sfxGain.gain.value = 0.6;
+                sfxGain.connect(audioCtx.destination);
+                console.log('🎵 音频引擎已就绪');
+            } catch (e) {
+                console.warn('Web Audio API 不可用', e);
+                soundEnabled = false;
+                soundToggle.style.display = 'none';
+            }
+        }
+
+        function resumeAudio() {
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    console.log('🔊 音频上下文已恢复');
+                    if (gameState === STATE.PLAYING && !bgmActive && soundEnabled) {
+                        startBGM();
+                    }
+                });
+            }
+        }
+
+        // 播放一个简单音效
+        function playTone(freq, duration, type = 'sine', gainValue = 0.3, destination = sfxGain) {
+            if (!audioCtx || !soundEnabled) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, now);
+            gain.gain.setValueAtTime(gainValue, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            osc.connect(gain);
+            gain.connect(destination);
+            osc.start(now);
+            osc.stop(now + duration);
+        }
+
+        // 收集星星音效（清脆叮咚）
+        function sfxCollect(isBig = false) {
+            if (!soundEnabled) return;
+            const baseFreq = isBig ? 880 : 660;
+            playTone(baseFreq, 0.12, 'sine', 0.4);
+            setTimeout(() => {
+                playTone(baseFreq * 1.25, 0.15, 'sine', 0.35);
+            }, 60);
+            if (isBig) {
+                setTimeout(() => {
+                    playTone(baseFreq * 1.5, 0.18, 'sine', 0.3);
+                }, 120);
+            }
+        }
+
+        // 连击音效（逐渐升高）
+        function sfxCombo(comboLevel) {
+            if (!soundEnabled) return;
+            const freq = 520 + Math.min(comboLevel, 12) * 35;
+            playTone(freq, 0.1, 'triangle', 0.35);
+            setTimeout(() => playTone(freq * 1.2, 0.08, 'triangle', 0.3), 50);
+            setTimeout(() => playTone(freq * 1.5, 0.1, 'triangle', 0.25), 100);
+        }
+
+        // 撞击陨石音效（低沉撞击）
+        function sfxHit() {
+            if (!soundEnabled) return;
+            playTone(80, 0.25, 'sawtooth', 0.5);
+            playTone(55, 0.35, 'triangle', 0.45);
+            playTone(120, 0.15, 'square', 0.2);
+        }
+
+        // 游戏结束音效（下降滑音）
+        function sfxGameOver() {
+            if (!soundEnabled) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(80, now + 1.2);
+            gain.gain.setValueAtTime(0.5, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.3);
+            osc.connect(gain);
+            gain.connect(sfxGain);
+            osc.start(now);
+            osc.stop(now + 1.3);
+        }
+
+        // 背景音乐循环
+        function startBGM() {
+            if (!audioCtx || !soundEnabled || bgmActive) return;
+            bgmActive = true;
+            bgmNoteIndex = 0;
+            function playNextNote() {
+                if (!bgmActive || !soundEnabled) return;
+                const freq = bgmNotes[bgmNoteIndex % bgmNotes.length];
+                // 使用柔和的正弦波，短促的拨弦感
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                osc.connect(gain);
+                gain.connect(bgmGain);
+                osc.start(now);
+                osc.stop(now + 0.45);
+                bgmNoteIndex++;
+            }
+            // 每隔0.5秒播放一个音符
+            if (bgmInterval) clearInterval(bgmInterval);
+            bgmInterval = setInterval(playNextNote, 500);
+            playNextNote(); // 立即播放第一个
+        }
+
+        function stopBGM() {
+            bgmActive = false;
+            if (bgmInterval) {
+                clearInterval(bgmInterval);
+                bgmInterval = null;
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            soundToggle.textContent = soundEnabled ? '🔊' : '🔇';
+            if (soundEnabled) {
+                soundToggle.classList.remove('muted');
+                if (gameState === STATE.PLAYING && !bgmActive) {
+                    startBGM();
+                }
+                // 恢复音频上下文
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+            } else {
+                soundToggle.classList.add('muted');
+                stopBGM();
+            }
+        }
+
+        soundToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSound();
+        });
+        // 防止点击按钮触发canvas点击开始游戏
+        soundToggle.addEventListener('mousedown', (e) => e.stopPropagation());
+        soundToggle.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+        });
+
+        // ---------- 游戏主逻辑 (与之前保持一致，仅在音效调用处添加) ----------
+        const GAME_WIDTH = 500;
+        const GAME_HEIGHT = 720;
+
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 20, 500);
+            const maxHeight = Math.min(window.innerHeight - 20, 720);
+            const scale = Math.min(maxWidth / GAME_WIDTH, maxHeight / GAME_HEIGHT);
+            canvas.style.width = GAME_WIDTH * scale + 'px';
+            canvas.style.height = GAME_HEIGHT * scale + 'px';
+            canvas.width = GAME_WIDTH;
+            canvas.height = GAME_HEIGHT;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const STATE = { IDLE: 'idle', PLAYING: 'playing', GAMEOVER: 'gameover' };
+        let gameState = STATE.IDLE;
+        let score = 0;
+        let bestScore = parseInt(localStorage.getItem('starCollectorBest') || '0');
+        let lives = 3;
+        let comboCount = 0;
+        let comboTimer = 0;
+        let invincibleTimer = 0;
+        let difficultyLevel = 1;
+        let screenShake = 0;
+        let gameTime = 0;
+        let spawnTimerStar = 0;
+        let spawnTimerMeteor = 0;
+        let spawnTimerBigStar = 0;
+        let targetX = GAME_WIDTH / 2;
+        let targetY = GAME_HEIGHT * 0.65;
+        let playerX = targetX;
+        let playerY = targetY;
+        let prevPlayerX = playerX;
+        let prevPlayerY = playerY;
+        let mouseOnCanvas = false;
+        let stars = [];
+        let meteors = [];
+        let particles = [];
+        let bgStars = [];
+        let floatingTexts = [];
+        let meteorsDestroyed = 0;
+
+        function initBgStars() {
+            bgStars = [];
+            for (let layer = 0; layer < 3; layer++) {
+                const count = [60, 35, 18][layer];
+                const speed = [0.15, 0.35, 0.6][layer];
+                const maxSize = [1.8, 2.5, 3.5][layer];
+                const minSize = [0.4, 0.8, 1.5][layer];
+                const alpha = [0.5, 0.7, 0.9][layer];
+                for (let i = 0; i < count; i++) {
+                    bgStars.push({
+                        x: Math.random() * GAME_WIDTH,
+                        y: Math.random() * GAME_HEIGHT,
+                        size: minSize + Math.random() * (maxSize - minSize),
+                        speed: speed,
+                        alpha: alpha * (0.5 + Math.random() * 0.5),
+                        twinkleSpeed: 0.5 + Math.random() * 2.5,
+                        twinkleOffset: Math.random() * Math.PI * 2,
+                        layer: layer,
+                    });
+                }
+            }
+            bgStars.sort((a, b) => a.layer - b.layer);
+        }
+
+        function dist(a, b) {
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function lerp(a, b, t) { return a + (b - a) * t; }
+        function rand(min, max) { return min + Math.random() * (max - min); }
+        function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
+
+        function drawStar(ctx, cx, cy, outerR, innerR, rotation = 0) {
+            ctx.beginPath();
+            for (let i = 0; i < 10; i++) {
+                const r = i % 2 === 0 ? outerR : innerR;
+                const angle = (i * Math.PI) / 5 - Math.PI / 2 + rotation;
+                const x = cx + Math.cos(angle) * r;
+                const y = cy + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+        }
+
+        function spawnParticles(x, y, count, colorHue, spread, life, sizeRange) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = rand(spread * 0.3, spread);
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: life * (0.5 + Math.random() * 0.5),
+                    maxLife: life,
+                    hue: colorHue + rand(-20, 20),
+                    size: rand(sizeRange[0], sizeRange[1]),
+                    decay: 0.96 + Math.random() * 0.03,
+                });
+            }
+            if (particles.length > 180) particles.splice(0, particles.length - 180);
+        }
+
+        function spawnFloatingText(x, y, text, color, size) {
+            floatingTexts.push({ x, y, text, color, size, life: 1.0, vy: -2.5 - Math.random() * 2 });
+            if (floatingTexts.length > 15) floatingTexts.shift();
+        }
+
+        function spawnStar() {
+            const x = rand(30, GAME_WIDTH - 30);
+            const size = rand(10, 16);
+            stars.push({
+                x, y: -25, outerR: size, innerR: size * 0.4,
+                rotation: Math.random() * Math.PI * 2, rotSpeed: rand(-0.03, 0.03),
+                vy: rand(0.6, 1.4), vx: rand(-0.25, 0.25), glow: 0, glowDir: 1,
+            });
+        }
+
+        function spawnBigStar() {
+            const x = rand(40, GAME_WIDTH - 40);
+            const size = rand(20, 26);
+            stars.push({
+                x, y: -30, outerR: size, innerR: size * 0.38,
+                rotation: Math.random() * Math.PI * 2, rotSpeed: rand(-0.04, 0.04),
+                vy: rand(0.4, 0.8), vx: rand(-0.2, 0.2), glow: 0, glowDir: 1,
+                isBig: true, pulsePhase: Math.random() * Math.PI * 2,
+            });
+        }
+
+        function spawnMeteor() {
+            const x = rand(20, GAME_WIDTH - 20);
+            const size = rand(18, 38);
+            const vertices = [];
+            const numVerts = randInt(7, 12);
+            for (let i = 0; i < numVerts; i++) {
+                const angle = (i / numVerts) * Math.PI * 2;
+                vertices.push({ angle, r: size * rand(0.7, 1.0) });
+            }
+            meteors.push({
+                x, y: -35, size, vertices,
+                rotation: Math.random() * Math.PI * 2, rotSpeed: rand(-0.04, 0.04),
+                vy: rand(1.2, 2.8 + difficultyLevel * 0.25), vx: rand(-0.6, 0.6),
+                craters: Array.from({ length: randInt(2, 5) }, () => ({
+                    angle: Math.random() * Math.PI * 2,
+                    dist: Math.random() * 0.55,
+                    r: size * rand(0.08, 0.2),
+                })),
+            });
+        }
+
+        function resetGame() {
+            score = 0; lives = 3; comboCount = 0; comboTimer = 0;
+            invincibleTimer = 0; difficultyLevel = 1; screenShake = 0;
+            gameTime = 0; spawnTimerStar = 0; spawnTimerMeteor = 0;
+            spawnTimerBigStar = 0; meteorsDestroyed = 0;
+            stars = []; meteors = []; particles = []; floatingTexts = [];
+            playerX = targetX; playerY = targetY;
+            prevPlayerX = playerX; prevPlayerY = playerY;
+            for (let i = 0; i < 5; i++) {
+                const s = {
+                    x: rand(30, GAME_WIDTH - 30), y: rand(60, GAME_HEIGHT * 0.5),
+                    outerR: rand(10, 16), innerR: 0,
+                    rotation: Math.random() * Math.PI * 2, rotSpeed: rand(-0.03, 0.03),
+                    vy: rand(0.5, 1.0), vx: rand(-0.2, 0.2), glow: 0, glowDir: 1,
+                };
+                s.innerR = s.outerR * 0.4;
+                stars.push(s);
+            }
+        }
+
+        function endGame() {
+            gameState = STATE.GAMEOVER;
+            stopBGM();
+            sfxGameOver();
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('starCollectorBest', bestScore);
+            }
+            spawnParticles(playerX, playerY, 60, 15, 5, 1.5, [1, 6]);
+            spawnParticles(playerX, playerY, 30, 30, 7, 2.0, [2, 10]);
+            screenShake = 20;
+            wrapper.classList.add('danger');
+            setTimeout(() => wrapper.classList.remove('danger'), 400);
+        }
+
+        function startGame() {
+            resetGame();
+            gameState = STATE.PLAYING;
+            wrapper.classList.remove('danger');
+            if (soundEnabled) {
+                startBGM();
+            }
+            resumeAudio();
+        }
+
+        function checkCollision(obj, px, py, playerRadius) {
+            return dist({ x: px, y: py }, { x: obj.x, y: obj.y }) < (playerRadius + (obj.size || obj.outerR || 15) * 0.75);
+        }
+
+        function update(dt) {
+            if (gameState !== STATE.PLAYING) {
+                updateParticles(dt);
+                updateFloatingTexts(dt);
+                if (screenShake > 0) screenShake = Math.max(0, screenShake - dt * 40);
+                return;
+            }
+            gameTime += dt;
+            const dtSec = dt;
+            difficultyLevel = 1 + Math.floor(score / 150);
+            if (difficultyLevel > 15) difficultyLevel = 15;
+            prevPlayerX = playerX;
+            prevPlayerY = playerY;
+            playerX = lerp(playerX, targetX, 0.18);
+            playerY = lerp(playerY, targetY, 0.18);
+            playerX = Math.max(20, Math.min(GAME_WIDTH - 20, playerX));
+            playerY = Math.max(30, Math.min(GAME_HEIGHT - 20, playerY));
+            const dx = playerX - prevPlayerX;
+            const dy = playerY - prevPlayerY;
+            const playerSpeed = Math.sqrt(dx * dx + dy * dy);
+            if (playerSpeed > 0.6 && gameState === STATE.PLAYING) {
+                const tailCount = Math.min(Math.floor(playerSpeed * 1.5), 6);
+                for (let i = 0; i < tailCount; i++) {
+                    particles.push({
+                        x: playerX - dx * 0.5 + rand(-4, 4), y: playerY - dy * 0.5 + rand(-4, 4),
+                        vx: -dx * 0.3 + rand(-0.5, 0.5), vy: -dy * 0.3 + rand(-0.5, 0.5),
+                        life: 0.3 + Math.random() * 0.5, maxLife: 0.6,
+                        hue: 250 + rand(-25, 25), size: rand(1.5, 4), decay: 0.94,
+                    });
+                }
+                if (particles.length > 180) particles.splice(0, particles.length - 180);
+            }
+            if (invincibleTimer > 0) invincibleTimer -= dtSec;
+            if (comboTimer > 0) { comboTimer -= dtSec; if (comboTimer <= 0) comboCount = 0; }
+            if (screenShake > 0) screenShake = Math.max(0, screenShake - dt * 45);
+            spawnTimerStar += dtSec;
+            if (spawnTimerStar >= Math.max(0.45, 1.6 - difficultyLevel * 0.07)) {
+                spawnTimerStar = 0; spawnStar(); if (stars.length > 20) stars.shift();
+            }
+            spawnTimerBigStar += dtSec;
+            if (spawnTimerBigStar >= rand(8, 14)) { spawnTimerBigStar = 0; spawnBigStar(); }
+            spawnTimerMeteor += dtSec;
+            if (spawnTimerMeteor >= Math.max(0.5, 2.0 - difficultyLevel * 0.1)) {
+                spawnTimerMeteor = 0; spawnMeteor();
+                if (meteors.length > 15) meteors.shift();
+                if (difficultyLevel >= 6 && Math.random() < 0.35) spawnMeteor();
+            }
+            for (let i = stars.length - 1; i >= 0; i--) {
+                const s = stars[i];
+                s.y += s.vy; s.x += s.vx; s.rotation += s.rotSpeed;
+                s.glow += 0.04 * s.glowDir; if (s.glow > 1) s.glowDir = -1; if (s.glow < 0) s.glowDir = 1;
+                if (s.isBig) s.pulsePhase += 0.05;
+                if (s.y > GAME_HEIGHT + 40 || s.x < -40 || s.x > GAME_WIDTH + 40) { stars.splice(i, 1); continue; }
+                if (checkCollision(s, playerX, playerY, 16)) {
+                    const basePoints = s.isBig ? 30 : 10;
+                    const comboBonus = Math.min(comboCount * 5, 25);
+                    const points = basePoints + comboBonus;
+                    score += points;
+                    comboCount++; comboTimer = 1.2;
+                    // 音效
+                    if (s.isBig) sfxCollect(true);
+                    else sfxCollect(false);
+                    if (comboCount >= 5 && comboCount % 5 === 0) {
+                        spawnFloatingText(s.x, s.y, '🔥 COMBO x' + comboCount + '!', '#ffdd57', 22);
+                        sfxCombo(comboCount);
+                    } else if (comboCount >= 3) {
+                        spawnFloatingText(s.x, s.y, '+' + points + ' x' + comboCount, '#ffcc00', 17);
+                    } else {
+                        spawnFloatingText(s.x, s.y, '+' + points, '#ffeaa7', 15);
+                    }
+                    spawnParticles(s.x, s.y, s.isBig ? 22 : 12, 48, s.isBig ? 4 : 2.5, 0.7, [1, s.isBig ? 5 : 3]);
+                    stars.splice(i, 1);
+                }
+            }
+            for (let i = meteors.length - 1; i >= 0; i--) {
+                const m = meteors[i];
+                m.y += m.vy; m.x += m.vx; m.rotation += m.rotSpeed;
+                if (m.y > GAME_HEIGHT + 50 || m.x < -50 || m.x > GAME_WIDTH + 50) { meteors.splice(i, 1); continue; }
+                if (invincibleTimer <= 0 && checkCollision(m, playerX, playerY, 14)) {
+                    lives--; invincibleTimer = 2.0; screenShake = 16; meteorsDestroyed++;
+                    sfxHit();
+                    spawnParticles(m.x, m.y, 25, 10, 4, 0.8, [1, 5]);
+                    spawnParticles(playerX, playerY, 15, 0, 3, 0.6, [2, 8]);
+                    spawnFloatingText(playerX, playerY - 10, '💥', '#ff4444', 28);
+                    meteors.splice(i, 1);
+                    wrapper.classList.add('danger');
+                    setTimeout(() => wrapper.classList.remove('danger'), 350);
+                    if (lives <= 0) { endGame(); return; }
+                }
+            }
+            updateParticles(dtSec);
+            updateFloatingTexts(dtSec);
+            for (const bs of bgStars) { bs.y += bs.speed; if (bs.y > GAME_HEIGHT + 5) { bs.y = -5; bs.x = Math.random() * GAME_WIDTH; } }
+        }
+
+        function updateParticles(dt) {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.life -= dt; p.size *= p.decay;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function updateFloatingTexts(dt) {
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y += ft.vy; ft.life -= dt;
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+        }
+
+        // 渲染函数(保持原样)
+        function drawBackground() {
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+            bgGrad.addColorStop(0, '#080820'); bgGrad.addColorStop(0.35, '#0c0c2d');
+            bgGrad.addColorStop(0.7, '#0a0f28'); bgGrad.addColorStop(1, '#060618');
+            ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.save(); ctx.globalAlpha = 0.06;
+            const nebula1 = ctx.createRadialGradient(120, 200, 30, 120, 200, 280);
+            nebula1.addColorStop(0, '#7b4fbf'); nebula1.addColorStop(0.5, '#3a1f6e'); nebula1.addColorStop(1, 'transparent');
+            ctx.fillStyle = nebula1; ctx.fillRect(-100, -50, 500, 500);
+            const nebula2 = ctx.createRadialGradient(380, 450, 20, 380, 450, 220);
+            nebula2.addColorStop(0, '#4f7bbf'); nebula2.addColorStop(0.5, '#1f3a6e'); nebula2.addColorStop(1, 'transparent');
+            ctx.fillStyle = nebula2; ctx.fillRect(150, 200, 450, 450);
+            const nebula3 = ctx.createRadialGradient(250, 100, 15, 250, 100, 180);
+            nebula3.addColorStop(0, '#9b5fc0'); nebula3.addColorStop(0.6, '#2d1045'); nebula3.addColorStop(1, 'transparent');
+            ctx.fillStyle = nebula3; ctx.fillRect(50, -80, 400, 400);
+            ctx.restore();
+            for (const bs of bgStars) {
+                const twinkle = 0.5 + 0.5 * Math.sin(gameTime * bs.twinkleSpeed + bs.twinkleOffset);
+                const alpha = bs.alpha * (0.55 + 0.45 * twinkle);
+                ctx.fillStyle = `rgba(220,210,255,${alpha})`; ctx.beginPath(); ctx.arc(bs.x, bs.y, bs.size, 0, Math.PI*2); ctx.fill();
+                if (bs.size > 2.2 && twinkle > 0.75) { ctx.fillStyle = `rgba(200,180,255,${alpha*0.35})`; ctx.beginPath(); ctx.arc(bs.x, bs.y, bs.size*2.5, 0, Math.PI*2); ctx.fill(); }
+            }
+        }
+
+        function drawPlayer() {
+            if (gameState === STATE.GAMEOVER) return;
+            const px = playerX, py = playerY;
+            const isInvincible = invincibleTimer > 0;
+            if (isInvincible && Math.floor(invincibleTimer * 18) % 2 === 0) return;
+            ctx.save(); ctx.translate(px, py);
+            const glowGrad = ctx.createRadialGradient(0,0,6,0,0,32);
+            glowGrad.addColorStop(0,'rgba(140,180,255,0.7)'); glowGrad.addColorStop(0.5,'rgba(80,120,220,0.3)'); glowGrad.addColorStop(1,'rgba(30,50,150,0)');
+            ctx.fillStyle = glowGrad; ctx.beginPath(); ctx.arc(0,0,32,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(0,-22); ctx.bezierCurveTo(16,-16,20,-4,18,8); ctx.bezierCurveTo(16,16,8,20,0,22); ctx.bezierCurveTo(-8,20,-16,16,-18,8); ctx.bezierCurveTo(-20,-4,-16,-16,0,-22); ctx.closePath();
+            const bodyGrad = ctx.createLinearGradient(0,-22,0,22); bodyGrad.addColorStop(0,'#e8f0ff'); bodyGrad.addColorStop(0.3,'#b8cdf8'); bodyGrad.addColorStop(0.6,'#7a9fef'); bodyGrad.addColorStop(1,'#3d5ec2');
+            ctx.fillStyle = bodyGrad; ctx.fill(); ctx.strokeStyle='rgba(200,220,255,0.7)'; ctx.lineWidth=1.2; ctx.stroke();
+            const cockpitGrad = ctx.createRadialGradient(0,-6,2,0,-4,10); cockpitGrad.addColorStop(0,'#ffffff'); cockpitGrad.addColorStop(0.4,'#d0e8ff'); cockpitGrad.addColorStop(1,'#5a8ad4');
+            ctx.fillStyle=cockpitGrad; ctx.beginPath(); ctx.ellipse(0,-4,7,10,0,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#ffeedd'; ctx.shadowColor='rgba(255,180,100,0.9)'; ctx.shadowBlur=6;
+            ctx.beginPath(); ctx.arc(-5,17,2.5,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(5,17,2.5,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+            ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(-2,-16); ctx.lineTo(-14,2); ctx.moveTo(2,-16); ctx.lineTo(14,2); ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawStars() {
+            for (const s of stars) { ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rotation); const pulseScale = s.isBig?1+Math.sin(s.pulsePhase)*0.15:1; ctx.scale(pulseScale,pulseScale);
+                const glowAlpha=0.35+s.glow*0.35; const glowR=s.outerR*(s.isBig?2:1.6); const glowGrad=ctx.createRadialGradient(0,0,s.innerR*0.8,0,0,glowR); glowGrad.addColorStop(0,`rgba(255,220,100,${glowAlpha+0.2})`); glowGrad.addColorStop(0.5,`rgba(255,180,40,${glowAlpha})`); glowGrad.addColorStop(1,'rgba(255,150,20,0)'); ctx.fillStyle=glowGrad; ctx.beginPath(); ctx.arc(0,0,glowR,0,Math.PI*2); ctx.fill();
+                const starGrad=ctx.createLinearGradient(0,-s.outerR,0,s.outerR); starGrad.addColorStop(0,'#fffde8'); starGrad.addColorStop(0.3,'#ffe9a0'); starGrad.addColorStop(0.7,'#f5c842'); starGrad.addColorStop(1,'#d4941a'); ctx.fillStyle=starGrad; drawStar(ctx,0,0,s.outerR,s.innerR); ctx.fill(); ctx.strokeStyle='rgba(255,240,200,0.6)'; ctx.lineWidth=0.7; ctx.stroke();
+                const centerGrad=ctx.createRadialGradient(0,0,0,0,0,s.innerR*0.7); centerGrad.addColorStop(0,'rgba(255,255,255,0.9)'); centerGrad.addColorStop(1,'rgba(255,220,150,0)'); ctx.fillStyle=centerGrad; ctx.beginPath(); ctx.arc(0,0,s.innerR*0.7,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+        }
+
+        function drawMeteors() { /* 保持原样 */ for (const m of meteors) { ctx.save(); ctx.translate(m.x,m.y); ctx.rotate(m.rotation); ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); const fv=m.vertices[0]; ctx.moveTo(Math.cos(fv.angle)*fv.r+2,Math.sin(fv.angle)*fv.r+2); for(let i=1;i<m.vertices.length;i++){const v=m.vertices[i]; ctx.lineTo(Math.cos(v.angle)*v.r+2,Math.sin(v.angle)*v.r+2);} ctx.closePath(); ctx.fill();
+            const bodyGrad=ctx.createLinearGradient(-m.size,-m.size,m.size,m.size); bodyGrad.addColorStop(0,'#6b5b4f'); bodyGrad.addColorStop(0.4,'#4a3d34'); bodyGrad.addColorStop(0.7,'#3a2f28'); bodyGrad.addColorStop(1,'#2a1f18'); ctx.fillStyle=bodyGrad; ctx.beginPath(); ctx.moveTo(Math.cos(m.vertices[0].angle)*m.vertices[0].r,Math.sin(m.vertices[0].angle)*m.vertices[0].r); for(let i=1;i<m.vertices.length;i++){const v=m.vertices[i]; ctx.lineTo(Math.cos(v.angle)*v.r,Math.sin(v.angle)*v.r);} ctx.closePath(); ctx.fill(); ctx.strokeStyle='rgba(100,80,60,0.6)'; ctx.lineWidth=1; ctx.stroke();
+            for(const crater of m.craters){const cx=Math.cos(crater.angle)*crater.dist*m.size; const cy=Math.sin(crater.angle)*crater.dist*m.size; const craterGrad=ctx.createRadialGradient(cx,cy,crater.r*0.2,cx,cy,crater.r); craterGrad.addColorStop(0,'rgba(20,15,10,0.8)'); craterGrad.addColorStop(1,'rgba(60,45,35,0.1)'); ctx.fillStyle=craterGrad; ctx.beginPath(); ctx.arc(cx,cy,crater.r,0,Math.PI*2); ctx.fill();}
+            ctx.strokeStyle='rgba(140,110,80,0.3)'; ctx.lineWidth=0.6; ctx.beginPath(); const hlv=m.vertices[0]; ctx.moveTo(Math.cos(hlv.angle)*hlv.r*0.85,Math.sin(hlv.angle)*hlv.r*0.85); for(let i=1;i<Math.min(4,m.vertices.length);i++){const v=m.vertices[i]; ctx.lineTo(Math.cos(v.angle)*v.r*0.85,Math.sin(v.angle)*v.r*0.85);} ctx.stroke(); ctx.restore(); } }
+
+        function drawParticles() { for(const p of particles){ const alpha=p.life/p.maxLife; ctx.fillStyle=`hsla(${p.hue},80%,60%,${alpha})`; ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0.3,p.size),0,Math.PI*2); ctx.fill(); if(p.size>2.5){ctx.fillStyle=`hsla(${p.hue},90%,70%,${alpha*0.4})`; ctx.beginPath(); ctx.arc(p.x,p.y,p.size*2,0,Math.PI*2); ctx.fill();} } }
+
+        function drawFloatingTexts() { for(const ft of floatingTexts){ const alpha=ft.life; ctx.save(); ctx.globalAlpha=alpha; ctx.fillStyle=ft.color; ctx.font=`bold ${ft.size*(1+(1-ft.life)*0.3)}px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif`; ctx.textAlign='center'; ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=3; ctx.fillText(ft.text,ft.x,ft.y); ctx.shadowBlur=0; ctx.restore(); } }
+
+        function drawUI() {
+            ctx.fillStyle='#ffffff'; ctx.font='bold 26px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.textAlign='center'; ctx.shadowColor='rgba(180,160,255,0.6)'; ctx.shadowBlur=10; ctx.fillText(score.toString(),GAME_WIDTH/2,42); ctx.shadowBlur=0;
+            ctx.fillStyle='rgba(200,190,230,0.7)'; ctx.font='11px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('SCORE',GAME_WIDTH/2,22);
+            if(bestScore>0){ctx.fillStyle='rgba(180,170,210,0.5)'; ctx.font='10px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('最佳: '+bestScore,GAME_WIDTH/2,58);}
+            for(let i=0;i<3;i++){const hx=GAME_WIDTH-55+i*32; const hy=30; ctx.fillStyle=i<lives?'#ff5e7a':'rgba(255,255,255,0.2)'; ctx.strokeStyle=i<lives?'#ff3050':'rgba(255,255,255,0.15)'; ctx.lineWidth=1.2; ctx.beginPath(); const hs=7; ctx.moveTo(hx,hy+hs*0.3); ctx.bezierCurveTo(hx,hy-hs*0.4,hx-hs*1.1,hy-hs*0.4,hx-hs*1.1,hy+hs*0.3); ctx.bezierCurveTo(hx-hs*1.1,hy+hs*1.1,hx,hy+hs*1.5,hx,hy+hs*1.8); ctx.bezierCurveTo(hx,hy+hs*1.5,hx+hs*1.1,hy+hs*1.1,hx+hs*1.1,hy+hs*0.3); ctx.bezierCurveTo(hx+hs*1.1,hy-hs*0.4,hx,hy-hs*0.4,hx,hy+hs*0.3); ctx.fill(); ctx.stroke();}
+            if(comboCount>=3&&comboTimer>0&&gameState===STATE.PLAYING){ctx.fillStyle=`rgba(255,200,60,${Math.min(1,comboTimer*3)})`; ctx.font='bold 15px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('🔥 COMBO x'+comboCount,GAME_WIDTH/2,78+Math.sin(gameTime*8)*3);}
+            if(difficultyLevel>=5){ctx.fillStyle='rgba(255,150,100,0.5)'; ctx.font='9px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.textAlign='right'; ctx.fillText('Lv.'+difficultyLevel,GAME_WIDTH-18,GAME_HEIGHT-12);}
+        }
+
+        function drawIdleScreen() { /* 保持原样 */ const titleY=GAME_HEIGHT*0.28; ctx.fillStyle='#ffffff'; ctx.font='bold 36px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.textAlign='center'; ctx.shadowColor='rgba(180,150,255,0.8)'; ctx.shadowBlur=20; ctx.fillText('✨ 星光收集者',GAME_WIDTH/2,titleY); ctx.shadowBlur=0; ctx.fillStyle='rgba(200,190,230,0.7)'; ctx.font='15px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('Star Collector',GAME_WIDTH/2,titleY+32); const promptY=GAME_HEIGHT*0.55; const pulse=Math.sin(gameTime*2.5)*0.3+0.7; ctx.fillStyle=`rgba(255,255,255,${pulse})`; ctx.font='16px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('移动鼠标或触摸屏幕',GAME_WIDTH/2,promptY); ctx.fillText('开始游戏',GAME_WIDTH/2,promptY+25); const arrowY=promptY+55; ctx.fillStyle=`rgba(255,255,255,${pulse*0.8})`; ctx.beginPath(); ctx.moveTo(GAME_WIDTH/2,arrowY+8); ctx.lineTo(GAME_WIDTH/2-10,arrowY-2); ctx.lineTo(GAME_WIDTH/2+10,arrowY-2); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.arc(GAME_WIDTH/2,arrowY-12,4,0,Math.PI*2); ctx.fill(); if(bestScore>0){ctx.fillStyle='rgba(200,180,220,0.5)'; ctx.font='13px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('🏆 最高分: '+bestScore,GAME_WIDTH/2,GAME_HEIGHT*0.75);} }
+
+        function drawGameOverScreen() { ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT); const goY=GAME_HEIGHT*0.3; ctx.fillStyle='#ff8888'; ctx.font='bold 34px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.textAlign='center'; ctx.shadowColor='rgba(255,60,60,0.7)'; ctx.shadowBlur=18; ctx.fillText('游戏结束',GAME_WIDTH/2,goY); ctx.shadowBlur=0; ctx.fillStyle='#ffffff'; ctx.font='bold 50px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText(score.toString(),GAME_WIDTH/2,goY+55); ctx.fillStyle='rgba(200,190,230,0.7)'; ctx.font='14px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('最终得分',GAME_WIDTH/2,goY+75); if(score>=bestScore&&score>0){ctx.fillStyle=`rgba(255,215,0,${Math.sin(gameTime*3)*0.3+0.7})`; ctx.font='bold 18px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('🏆 新纪录！',GAME_WIDTH/2,goY+100);} const restartY=GAME_HEIGHT*0.62; ctx.fillStyle=`rgba(255,255,255,${Math.sin(gameTime*2.5)*0.3+0.7})`; ctx.font='16px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('点击屏幕重新开始',GAME_WIDTH/2,restartY); ctx.fillStyle='rgba(200,180,220,0.45)'; ctx.font='12px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif'; ctx.fillText('难度等级: '+difficultyLevel+'  |  摧毁陨石: '+meteorsDestroyed,GAME_WIDTH/2,restartY+30); }
+
+        function render() {
+            ctx.clearRect(0,0,GAME_WIDTH,GAME_HEIGHT);
+            let shakeX=0,shakeY=0;
+            if(screenShake>0.3){shakeX=(Math.random()-0.5)*screenShake; shakeY=(Math.random()-0.5)*screenShake;}
+            ctx.save(); ctx.translate(shakeX,shakeY);
+            drawBackground(); drawStars(); drawMeteors(); drawParticles(); drawFloatingTexts(); drawPlayer(); drawUI();
+            ctx.restore();
+            if(gameState===STATE.IDLE) drawIdleScreen();
+            else if(gameState===STATE.GAMEOVER) drawGameOverScreen();
+            if(invincibleTimer>0&&gameState===STATE.PLAYING){ctx.strokeStyle=`rgba(255,255,255,${0.3+Math.sin(gameTime*15)*0.2})`; ctx.lineWidth=2; ctx.strokeRect(4,4,GAME_WIDTH-8,GAME_HEIGHT-8);}
+        }
+
+        let lastTime = performance.now();
+        function gameLoop(timestamp) {
+            let dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            if (dt > 0.15) dt = 0.15;
+            if (dt <= 0) dt = 0.016;
+            if (gameState === STATE.IDLE || gameState === STATE.GAMEOVER) {
+                gameTime += dt;
+                updateParticles(dt);
+                updateFloatingTexts(dt);
+                if (screenShake > 0) screenShake = Math.max(0, screenShake - dt * 40);
+                for (const bs of bgStars) { bs.y += bs.speed; if (bs.y > GAME_HEIGHT + 5) { bs.y = -5; bs.x = Math.random() * GAME_WIDTH; } }
+            } else {
+                update(dt);
+            }
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (e.clientX - rect.left) * (GAME_WIDTH / rect.width),
+                y: (e.clientY - rect.top) * (GAME_HEIGHT / rect.height),
+            };
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const pos = getCanvasPos(e);
+            targetX = pos.x; targetY = pos.y; mouseOnCanvas = true;
+            if (gameState === STATE.IDLE) startGame();
+            initAudioContext(); resumeAudio();
+        });
+        canvas.addEventListener('mouseenter', () => { mouseOnCanvas = true; });
+        canvas.addEventListener('mouseleave', () => { mouseOnCanvas = false; targetX = Math.max(20, Math.min(GAME_WIDTH-20,targetX)); targetY = Math.max(30, Math.min(GAME_HEIGHT-20,targetY)); });
+        canvas.addEventListener('click', (e) => {
+            initAudioContext(); resumeAudio();
+            if (gameState === STATE.GAMEOVER) startGame();
+            else if (gameState === STATE.IDLE) { const pos = getCanvasPos(e); targetX = pos.x; targetY = pos.y; startGame(); }
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            initAudioContext(); resumeAudio();
+            const pos = getCanvasPos(e.touches[0]);
+            targetX = pos.x; targetY = pos.y;
+            if (gameState === STATE.GAMEOVER) startGame();
+            else if (gameState === STATE.IDLE) startGame();
+        }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const pos = getCanvasPos(e.touches[0]);
+            targetX = pos.x; targetY = pos.y; mouseOnCanvas = true;
+        }, { passive: false });
+        canvas.addEventListener('touchend', (e) => { e.preventDefault(); mouseOnCanvas = false; }, { passive: false });
+
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            initAudioContext(); resumeAudio();
+            if (gameState === STATE.IDLE) startGame();
+            if (gameState === STATE.GAMEOVER && e.key === ' ') startGame();
+        });
+        window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+        const origUpdate = update;
+        update = function(dt) {
+            if (gameState === STATE.PLAYING) {
+                const kbSpeed = 280;
+                if (keys['ArrowLeft'] || keys['a'] || keys['A']) targetX -= kbSpeed * dt;
+                if (keys['ArrowRight'] || keys['d'] || keys['D']) targetX += kbSpeed * dt;
+                if (keys['ArrowUp'] || keys['w'] || keys['W']) targetY -= kbSpeed * dt;
+                if (keys['ArrowDown'] || keys['s'] || keys['S']) targetY += kbSpeed * dt;
+                targetX = Math.max(20, Math.min(GAME_WIDTH-20, targetX));
+                targetY = Math.max(30, Math.min(GAME_HEIGHT-20, targetY));
+            }
+            origUpdate(dt);
+        };
+
+        function init() {
+            initBgStars();
+            resetGame();
+            playerX = GAME_WIDTH/2; playerY = GAME_HEIGHT*0.65;
+            targetX = playerX; targetY = playerY;
+            gameState = STATE.IDLE;
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+            initAudioContext();
+        }
+        init();
+    })();
+</script>
+</body>
+</html>
